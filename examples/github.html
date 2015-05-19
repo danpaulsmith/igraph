@@ -1,68 +1,199 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-        <title>igraph</title>
-        <link href="main.css" rel="stylesheet" type="text/css" />
-        <script src="../js/jquery-1.11.1.min.js"></script>
-        <script src="../js/build/igraph.min.js"></script>
-    </head>
-    <body>
-        <div class="graph"></div>
-        <div class="label"></div>
-        <div class="description">
-            <h1>github followers</h1>
-            <p>
-                This graph was generated through the Github API by traversing
-                the "following" lists of each user. Nodes are users, and are
-                sized by their number of followers. I used myself
-                (<a href="https://github.com/patrickfuller">patrickfuller</a>)
-                as the root node of this graph, and cut off traversal at 1,000
-                users using <a href="https://gist.github.com/patrickfuller/8143294">
-                this script</a>.
-            </p>
-        </div>
 
-        <a href="https://github.com/patrickfuller/igraph"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://s3.amazonaws.com/github/ribbons/forkme_right_darkblue_121621.png" alt="Fork me on GitHub"></a>
-        <script type="text/javascript">
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+  <title>igraph</title>
+  <link href="main.css" rel="stylesheet" type="text/css" />
+  <script src="../js/jquery-1.11.1.min.js"></script>
+  <!--         <script src="../js/three.min.js"></script>
+        <script src="../js/TrackballControls.js"></script>
+        <script src="../js/ShaderToon.js"></script>
+        <script src="../js/igraph.js"></script> -->
+  <script src="../js/build/igraph.min.js"></script>
+  <style>
+  #textQuery {
+    font-size: 18px;
+    min-height: 100px;
+    opacity: 0.5;
+    padding: 10px;
+    width: 100%;
+  }
+  </style>
+</head>
 
-            // Create and draw, making sure to disable layout optimization
-            igraph.create('.graph',
-                          {runOptimization: false,
-                           defaultNodeColor: 0x6a9fb5,
-                           edgeSize: 0.1,
-                           z: 75});
-            $.getJSON('github.json', function (graph) {
-                igraph.draw(graph);
-            });
+<body>
+  <div class="graph"></div>
+  <div class="label"></div>
+  <div class="description">
+    <h1>3D network of Neo4J data</h1>
+    <p>
+      WebGL-based force layout in 3D of Neo4J data.
+      <form id="query">
+        <textarea id="textQuery">start n=node(204525) match p=shortestPath((n)-[*..5]-(o)) return distinct p limit 50</textarea>
+        <button type="submit">Go</button>
+      </form>
+    </p>
+  </div>
+  <script type="text/javascript">
+  var nodeMap = {};
+  var gQuery = '';
+  var palette = ['#f0f9e8', '#bae4bc', '#7bccc4', '#43a2ca', '#0868ac'];
+  var theme = {
+    'Disease': {
+      colour: '0xFF4F69',
+      size: 30
+    },
+    'Chemical': {
+      colour: '0x65D35B',
+      size: 10
+    },
+    'Gene': {
+      colour: '0x6693FF',
+      size: 15
+    },
+    'Chebi': {
+      colour: '0x75FFB3',
+      size: 10
+    }
+  };
 
-            // Show name of node on hover
-            var onEnter, onExit, $d, hovered;
-            $d = $('.label');
-            $d.hide();
-            hovered = igraph.makeMaterial(0xb7ecff);
-            onEnter = function (node) {
-                $d.html('<p><b>' + node.name + '</b></p>');
-                $d.show();
-                node.defaultMaterial = node.material;
-                node.material = hovered;
-            };
-            onExit = function (node) {
-                $d.empty();
-                $d.hide();
-                node.material = node.defaultMaterial;
-            };
-            igraph.onNodeHover(onEnter, onExit);
+  $('form#query').submit(function(e, form) {
+    e.preventDefault();
+    gQuery = $('#textQuery').val();
+    executeQuery(gQuery);
+  });
 
-            // Move the text showing name along with the mouse
-            $(document).mousemove(function (event) {
-                $d.css({ left: event.pageX + 10, top: event.pageY + 10 });
-            });
+    // Create and draw, making sure to disable layout optimization
+  igraph.create('.graph', {
+    runOptimization: true,
+    defaultNodeColor: 0x6a9fb5,
+    edgeSize: 0.1,
+    z: 75
+  });
 
-            // Pop up a github window if a node is clicked
-            igraph.onNodeClick(function (node) {
-                window.open("https://github.com/" + node.name, "_blank");
-            });
-        </script>
-    </body>
+  // $.getJSON('github.json', function (graph) {
+  //     igraph.draw(graph);
+  // });
+  //
+  var executeQuery = function(query) {
+    $.ajax({
+      url: 'http://controller02:7574/db/data/transaction/commit',
+      type: 'post',
+      data: JSON.stringify({
+        "statements": [{
+          "statement": query,
+          // "statement": "start n=node(204525) match (n)-[r]-(a) return distinct n,r,a",
+          "resultDataContents": ["row", "graph"],
+          "includeStats": true
+        }]
+      }),
+      headers: {
+        "Content-Type": "application/json"
+      },
+      dataType: 'json',
+      success: function(data) {
+        var graph = formatData(data.results[0].data);
+        igraph.clear();
+        igraph.draw(graph);
+      }
+    });
+  };
+
+  var formatData = function(relationships) {
+
+      var relMap = {},
+      network = {
+        nodes: [],
+        edges: []
+      },
+      width = window.innerWidth,
+      height = window.innerHeight,
+      nodeCount = 0,
+      hoverNode,
+      clickedNode;
+
+    for (var i = relationships.length - 1; i >= 0; i--) {
+      var graph = relationships[i].graph;
+
+      for (var j = relationships[i].graph.nodes.length - 1; j >= 0; j--) {
+        var node = relationships[i].graph.nodes[j],
+        nodeID = 'id-' + node.id;
+        if (!nodeMap[nodeID]) {
+          nodeMap[nodeID] = {
+            id: node.id,
+            properties: node.properties,
+            // x: Math.random() * width,
+            // y: Math.random() * height,
+            // r: theme[node.labels[0]].size,
+            size: theme[node.labels[0]].size / 40,
+            location: [Math.random(), Math.random(), Math.random()],
+            // weight: 1,
+            color: theme[node.labels[0]].colour
+            // grapherIndex: nodeCount
+          };
+          nodeCount++;
+          network.nodes.push(nodeMap[nodeID]);
+        }
+      };
+
+      for (var j = relationships[i].graph.relationships.length - 1; j >= 0; j--) {
+        var rel = relationships[i].graph.relationships[j];
+        if (!relMap[rel.id]) {
+          relMap[rel.id] = rel;
+          var from = 'id-' + relMap[rel.id].startNode,
+            to = 'id-' + relMap[rel.id].endNode;
+          network.edges.push({
+            source: from,
+            target: to,
+            from: nodeMap[from],
+            to: nodeMap[to]
+          });
+        }
+      };
+
+    };
+
+    var graph = {
+      nodes: nodeMap,
+      edges: network.edges
+    };
+    console.log('graph', graph);
+    return graph;
+  };
+  //
+  //
+  // Show name of node on hover
+  var onEnter, onExit, $d, hovered;
+  $d = $('.label');
+  $d.hide();
+  hovered = igraph.makeMaterial(0xb7ecff);
+  onEnter = function(node) {
+    $d.html('<p><b>' + nodeMap[node.name].properties.name + '</b></p>');
+    $d.show();
+    node.defaultMaterial = node.material;
+    node.material = hovered;
+  };
+  onExit = function(node) {
+    $d.empty();
+    $d.hide();
+    node.material = node.defaultMaterial;
+  };
+  igraph.onNodeHover(onEnter, onExit);
+
+  // Move the text showing name along with the mouse
+  $(document).mousemove(function(event) {
+    $d.css({
+      left: event.pageX + 10,
+      top: event.pageY + 10
+    });
+  });
+
+  // Pop up a github window if a node is clicked
+  igraph.onNodeClick(function(node) {
+    executeQuery('start n=node(' + nodeMap[node.name].id + ') match p=shortestPath((n)-[*..5]-(o)) return distinct p limit 50')
+  });
+  </script>
+</body>
+
 </html>
