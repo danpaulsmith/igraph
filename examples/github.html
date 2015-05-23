@@ -19,10 +19,80 @@
     padding: 10px;
     width: 100%;
   }
+  .loading {
+    display: none;
+    position: fixed;
+    left: 50%;
+    top: 40%;
+    width: 200px;
+    margin-left: -100px;
+    text-align: center;
+  }
+  .three-quarters-loader {
+    display: block !important;
+    margin: 15px auto;
+  }
+  @-moz-keyframes three-quarters-loader {
+    0% {
+      -moz-transform: rotate(0deg);
+      transform: rotate(0deg);
+    }
+    100% {
+      -moz-transform: rotate(360deg);
+      transform: rotate(360deg);
+    }
+  }
+  @-webkit-keyframes three-quarters-loader {
+    0% {
+      -webkit-transform: rotate(0deg);
+      transform: rotate(0deg);
+    }
+    100% {
+      -webkit-transform: rotate(360deg);
+      transform: rotate(360deg);
+    }
+  }
+  @keyframes three-quarters-loader {
+    0% {
+      -moz-transform: rotate(0deg);
+      -ms-transform: rotate(0deg);
+      -webkit-transform: rotate(0deg);
+      transform: rotate(0deg);
+    }
+    100% {
+      -moz-transform: rotate(360deg);
+      -ms-transform: rotate(360deg);
+      -webkit-transform: rotate(360deg);
+      transform: rotate(360deg);
+    }
+  }
+  /* :not(:required) hides this rule from IE9 and below */
+  .three-quarters-loader:not(:required) {
+    -moz-animation: three-quarters-loader 1250ms infinite linear;
+    -webkit-animation: three-quarters-loader 1250ms infinite linear;
+    animation: three-quarters-loader 1250ms infinite linear;
+    border: 8px solid #38e;
+    border-right-color: transparent;
+    border-radius: 16px;
+    box-sizing: border-box;
+    display: inline-block;
+    position: relative;
+    overflow: hidden;
+    text-indent: -9999px;
+    width: 32px;
+    height: 32px;
+  }
+
   </style>
 </head>
 
 <body>
+  <div class="loading">
+  Loading…
+    <div class="three-quarters-loader">
+
+    </div>
+  </div>
   <div class="graph"></div>
   <div class="label"></div>
   <div class="description">
@@ -46,30 +116,49 @@
     },
     'Chemical': {
       colour: '0x65D35B',
-      size: 10
+      size: 15
     },
     'Gene': {
       colour: '0x6693FF',
-      size: 15
+      size: 20
     },
     'Chebi': {
       colour: '0x75FFB3',
+      size: 15
+    },
+    'COTerm': {
+      colour: '0xFF62CB',
       size: 10
+    },
+    'GOTerm': {
+      colour: '0xFF8C49',
+      size: 10
+    },
+    'Pathway': {
+      colour: '0x713BFF',
+      size: 50
     }
   };
 
   $('form#query').submit(function(e, form) {
     e.preventDefault();
+    igraph.clear();
+    $('.loading').show();
     gQuery = $('#textQuery').val();
     executeQuery(gQuery);
   });
 
     // Create and draw, making sure to disable layout optimization
   igraph.create('.graph', {
-    runOptimization: true,
-    defaultNodeColor: 0x6a9fb5,
-    edgeSize: 0.1,
-    z: 75
+    z: 75,
+    directed: true, // Toggles edge arrows
+    nodeSize: 2.0, // Default node size
+    edgeSize: 0.05, // Edge connection diameter
+    arrowSize: 0.5, // If drawn, edge arrow size
+    defaultNodeColor: 0x6a9fb5, // Color for nodes without a "color" property
+    defaultEdgeColor: 0x777777, // Color for edges without a "color" property
+    shader: "toon", // three.js shader to use, can be "toon", "basic", "phong", or "lambert"
+    runOptimization: true // Runs a force-directed-layout algorithm on the graph
   });
 
   // $.getJSON('github.json', function (graph) {
@@ -83,7 +172,6 @@
       data: JSON.stringify({
         "statements": [{
           "statement": query,
-          // "statement": "start n=node(204525) match (n)-[r]-(a) return distinct n,r,a",
           "resultDataContents": ["row", "graph"],
           "includeStats": true
         }]
@@ -94,8 +182,8 @@
       dataType: 'json',
       success: function(data) {
         var graph = formatData(data.results[0].data);
-        igraph.clear();
         igraph.draw(graph);
+        $('.loading').hide();
       }
     });
   };
@@ -173,11 +261,13 @@
     $d.show();
     node.defaultMaterial = node.material;
     node.material = hovered;
+    document.body.style.cursor = 'pointer';
   };
   onExit = function(node) {
     $d.empty();
     $d.hide();
     node.material = node.defaultMaterial;
+    document.body.style.cursor = 'auto';
   };
   igraph.onNodeHover(onEnter, onExit);
 
@@ -191,6 +281,8 @@
 
   // Pop up a github window if a node is clicked
   igraph.onNodeClick(function(node) {
+    igraph.clear();
+    $('.loading').show();
     executeQuery('start n=node(' + nodeMap[node.name].id + ') match p=shortestPath((n)-[*..5]-(o)) return distinct p limit 50')
   });
   </script>
